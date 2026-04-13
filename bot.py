@@ -12,7 +12,9 @@ bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 # ================= CONFIG =================
 ADMIN_IDS = [6048916888, 401484954]
+
 CHANNEL = "@plannnnb"
+CHANNEL_2 = "@ReVape_bgd"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "participants.json")
@@ -34,18 +36,33 @@ def save_data():
 # ================= CHECK SUB =================
 def is_subscribed(user_id):
     try:
-        member = bot.get_chat_member(CHANNEL, int(user_id))
-        return member.status in ["member", "creator", "administrator"]
+        m1 = bot.get_chat_member(CHANNEL, int(user_id))
+        m2 = bot.get_chat_member(CHANNEL_2, int(user_id))
+
+        ok1 = m1.status in ["member", "creator", "administrator"]
+        ok2 = m2.status in ["member", "creator", "administrator"]
+
+        return ok1 and ok2
+
     except:
         return False
 
 # ================= MENU =================
 def main_menu():
     markup = types.InlineKeyboardMarkup()
+
     markup.add(
         types.InlineKeyboardButton("🎟 Участвовать", callback_data="join"),
         types.InlineKeyboardButton("🎫 Мой билет", callback_data="my_ticket")
     )
+
+    markup.add(
+        types.InlineKeyboardButton(
+            "💳 Купить билет",
+            url="https://69d6a7bcb9e55a51389ed7d2.ticketscloud.org/"
+        )
+    )
+
     return markup
 
 # ================= START =================
@@ -65,10 +82,12 @@ def admin(message):
         return
 
     markup = types.InlineKeyboardMarkup(row_width=2)
+
     markup.add(
         types.InlineKeyboardButton("🏆 Победитель", callback_data="admin_winner"),
         types.InlineKeyboardButton("👥 Список", callback_data="admin_list"),
     )
+
     markup.add(
         types.InlineKeyboardButton("📦 Экспорт", callback_data="admin_export"),
         types.InlineKeyboardButton("🗑 Удалить билет", callback_data="admin_delete"),
@@ -80,7 +99,7 @@ def admin(message):
         reply_markup=markup
     )
 
-# ================= 🎰 SLOT ANIMATION =================
+# ================= SLOT ANIMATION =================
 def run_slot_animation(bot, cid, participants_copy):
 
     users = list(participants_copy.values())
@@ -113,7 +132,6 @@ def run_slot_animation(bot, cid, participants_copy):
         time.sleep(speed)
         speed += 0.02
 
-    # почти выиграл
     almost = random.choice(users)
 
     bot.edit_message_text(
@@ -127,7 +145,6 @@ def run_slot_animation(bot, cid, participants_copy):
 
     time.sleep(1)
 
-    # победитель
     winner_id = random.choice(list(participants_copy.keys()))
     winner = participants_copy[winner_id]
 
@@ -140,7 +157,6 @@ def run_slot_animation(bot, cid, participants_copy):
         msg.message_id
     )
 
-    # отправка в канал
     try:
         bot.send_message(
             CHANNEL,
@@ -166,8 +182,12 @@ def callback(call):
 
         if not is_subscribed(uid):
             markup = types.InlineKeyboardMarkup()
+
             markup.add(
-                types.InlineKeyboardButton("📢 Подписаться", url="https://t.me/plannnnb")
+                types.InlineKeyboardButton("📢 Канал 1", url="https://t.me/plannnnb")
+            )
+            markup.add(
+                types.InlineKeyboardButton("📢 Канал 2", url="https://t.me/ReVape_bgd")
             )
             markup.add(
                 types.InlineKeyboardButton("✅ Я подписался", callback_data="check_sub")
@@ -175,7 +195,7 @@ def callback(call):
 
             bot.send_message(
                 cid,
-                "❌ Подпишись на канал для участия:",
+                "❌ Подпишись на оба канала:",
                 reply_markup=markup
             )
             return
@@ -201,7 +221,6 @@ def callback(call):
         else:
             bot.send_message(cid, "❌ Нет билета")
 
-    # WINNER
     elif call.data == "admin_winner":
 
         if call.from_user.id not in ADMIN_IDS:
@@ -217,7 +236,6 @@ def callback(call):
             daemon=True
         ).start()
 
-    # LIST
     elif call.data == "admin_list":
 
         if call.from_user.id not in ADMIN_IDS:
@@ -229,7 +247,6 @@ def callback(call):
 
         bot.send_message(cid, text)
 
-    # EXPORT
     elif call.data == "admin_export":
 
         if call.from_user.id not in ADMIN_IDS:
@@ -244,7 +261,6 @@ def callback(call):
         with open(file_path, "rb") as f:
             bot.send_document(cid, f)
 
-    # DELETE
     elif call.data == "admin_delete":
 
         if call.from_user.id not in ADMIN_IDS:
@@ -307,5 +323,18 @@ def ticket_input(message):
             reply_markup=main_menu()
         )
 
+        # уведомление админу
+        bot.send_message(
+            ADMIN_IDS[0],
+            f"🎟 Новый участник\n\n"
+            f"👤 @{username}\n"
+            f"🎫 Билет: {text}"
+        )
+
 # ================= RUN =================
-bot.infinity_polling()
+while True:
+    try:
+        bot.infinity_polling(timeout=60, long_polling_timeout=60)
+    except Exception as e:
+        print("Ошибка:", e)
+        time.sleep(5)
