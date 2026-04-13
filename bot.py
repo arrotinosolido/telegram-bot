@@ -4,51 +4,34 @@ import json
 import os
 import random
 import time
-import threading
-from collections import Counter
 
-# ================= CONFIG =================
+# ================= TOKEN =================
 TOKEN = os.getenv("TOKEN")
-
-ADMIN_IDS = [6048916888, 401484954]
-CHANNEL = "@plannnnb"
 
 bot = telebot.TeleBot(TOKEN)
 
-# ================= FILES =================
+# ================= CONFIG =================
+ADMIN_IDS = [6048916888, 401484954]
+CHANNEL = "@plannnnb"
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "participants.json")
-WINNERS_FILE = os.path.join(BASE_DIR, "winners.json")
 
-# ================= DATA LOAD =================
+# ================= DATA =================
 if os.path.exists(DATA_FILE):
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         participants = json.load(f)
 else:
     participants = {}
 
-if os.path.exists(WINNERS_FILE):
-    with open(WINNERS_FILE, "r", encoding="utf-8") as f:
-        winners = json.load(f)
-else:
-    winners = []
-
 waiting_ticket = set()
-last_action = {}
 
 # ================= SAVE =================
 def save_data():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(participants, f, ensure_ascii=False, indent=2)
 
-def save_winners():
-    with open(WINNERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(winners, f, ensure_ascii=False, indent=2)
-
-# ================= CHECKS =================
-def is_admin(user_id):
-    return user_id in ADMIN_IDS
-
+# ================= CHECK SUB =================
 def is_subscribed(user_id):
     try:
         member = bot.get_chat_member(CHANNEL, user_id)
@@ -56,30 +39,12 @@ def is_subscribed(user_id):
     except:
         return False
 
-# ================= MENUS =================
+# ================= MAIN MENU =================
 def main_menu():
     markup = types.InlineKeyboardMarkup()
     markup.add(
         types.InlineKeyboardButton("🎟 Участвовать", callback_data="join"),
         types.InlineKeyboardButton("🎫 Мой билет", callback_data="my_ticket")
-    )
-    markup.add(
-        types.InlineKeyboardButton("❓ Правила", callback_data="rules")
-    )
-    return markup
-
-def admin_menu():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton("📊 Статистика", callback_data="admin_stats"),
-        types.InlineKeyboardButton("📋 Участники", callback_data="admin_list")
-    )
-    markup.add(
-        types.InlineKeyboardButton("🎰 Розыгрыш", callback_data="admin_winner"),
-        types.InlineKeyboardButton("🧹 Очистка", callback_data="admin_clear")
-    )
-    markup.add(
-        types.InlineKeyboardButton("🔥 Топ", callback_data="admin_top")
     )
     return markup
 
@@ -95,14 +60,13 @@ def start(message):
 # ================= ADMIN =================
 @bot.message_handler(commands=['admin'])
 def admin(message):
-    if not is_admin(message.from_user.id):
+    if message.from_user.id not in ADMIN_IDS:
         bot.send_message(message.chat.id, "❌ Нет доступа")
         return
 
     bot.send_message(
         message.chat.id,
-        f"👑 Админ панель\n\n👥 Участников: {len(participants)}",
-        reply_markup=admin_menu()
+        f"👑 Админ панель\n👥 Участников: {len(participants)}"
     )
 
 # ================= CALLBACK =================
@@ -111,12 +75,7 @@ def callback(call):
     cid = call.message.chat.id
     uid = call.from_user.id
 
-    # anti spam
-    if uid in last_action and time.time() - last_action[uid] < 1:
-        return
-    last_action[uid] = time.time()
-
-    # JOIN
+    # ================= JOIN =================
     if call.data == "join":
 
         if str(uid) in participants:
@@ -124,63 +83,58 @@ def callback(call):
             return
 
         if not is_subscribed(uid):
-            bot.send_message(cid, "❌ Подпишись на канал")
+
+            markup = types.InlineKeyboardMarkup()
+
+            markup.add(
+                types.InlineKeyboardButton(
+                    "📢 Подписаться на канал",
+                    url="https://t.me/plannnnb"
+                )
+            )
+
+            markup.add(
+                types.InlineKeyboardButton(
+                    "✅ Я подписался",
+                    callback_data="check_sub"
+                )
+            )
+
+            bot.send_message(
+                cid,
+                "❌ Чтобы участвовать, подпишись на канал:",
+                reply_markup=markup
+            )
             return
 
         waiting_ticket.add(uid)
         bot.send_message(cid, "🎟 Введи номер билета:")
 
-    # MY TICKET
-    elif call.data == "my_ticket":
-        if str(uid) in participants:
-            bot.send_message(cid, f"🎟 {participants[str(uid)]['ticket']}")
+    # ================= CHECK SUB =================
+    elif call.data == "check_sub":
+
+        if is_subscribed(uid):
+            waiting_ticket.add(uid)
+            bot.send_message(cid, "✅ Подписка подтверждена!\n🎟 Введи номер билета:")
         else:
-            bot.send_message(cid, "❌ Нет билета")
+            bot.send_message(cid, "❌ Ты ещё не подписан!")
 
-    # RULES
-    elif call.data == "rules":
-        bot.send_message(
-            cid,
-            "📜 Правила:\n\n"
-            "1. Подписка обязательна\n"
-            "2. Один билет = один участник\n"
-            "3. Победитель выбирается случайно"
-        )
+    # ================= MY TICKET =================
+    elif call.data == "my_ticket":
 
-    # ADMIN ONLY
-    if not is_admin(uid):
-        return
+        if str(uid) in participants:
+            bot.send_message(
+                cid,
+                f"🎫 Твой билет:\n🎟 {participants[str(uid)]['ticket']}"
+            )
+        else:
+            bot.send_message(cid, "❌ Ты ещё не участвовал")
 
-    if call.data == "admin_stats":
-        bot.send_message(cid, f"📊 Участников: {len(participants)}")
-
-    elif call.data == "admin_list":
-        if not participants:
-            bot.send_message(cid, "📭 Пусто")
-            return
-
-        text = "📋 Участники:\n\n"
-        for u in participants.values():
-            text += f"👤 {u['username']} — 🎟 {u['ticket']}\n"
-
-        bot.send_message(cid, text)
-
-    elif call.data == "admin_clear":
-        participants.clear()
-        save_data()
-        bot.send_message(cid, "🧹 База очищена")
-
-    elif call.data == "admin_top":
-        tickets = [u["ticket"] for u in participants.values()]
-        top = Counter(tickets).most_common(5)
-
-        text = "🔥 Топ билетов:\n\n"
-        for t, c in top:
-            text += f"{t} — {c} раз\n"
-
-        bot.send_message(cid, text)
-
+    # ================= ADMIN WINNER =================
     elif call.data == "admin_winner":
+
+        if uid not in ADMIN_IDS:
+            return
 
         if not participants:
             bot.send_message(cid, "❌ Нет участников")
@@ -189,33 +143,26 @@ def callback(call):
         winner_id = random.choice(list(participants.keys()))
         winner = participants[winner_id]
 
-        result = (
-            "🎉 Результаты!\n\n"
+        text = (
+            "🎉 РОЗЫГРЫШ!\n\n"
             "🏆 Победитель:\n"
-            f"{winner['username']}\n"
+            f"👤 {winner['username']}\n"
             f"🎟 {winner['ticket']}"
         )
 
-        winners.append(winner)
-        save_winners()
-
-        bot.send_message(cid, result)
-        bot.send_message(CHANNEL, result)
+        bot.send_message(cid, text)
 
 # ================= TICKET INPUT =================
 @bot.message_handler(func=lambda m: m.from_user.id in waiting_ticket)
-def get_ticket(message):
+def ticket_input(message):
+
     uid = str(message.from_user.id)
     ticket = message.text.strip()
 
-    if uid in participants:
-        bot.send_message(message.chat.id, "❌ Ты уже участвуешь!")
-        waiting_ticket.discard(message.from_user.id)
-        return
-
+    # duplicate check
     for u in participants.values():
         if u["ticket"] == ticket:
-            bot.send_message(message.chat.id, "❌ Такой билет уже есть")
+            bot.send_message(message.chat.id, "❌ Такой билет уже есть!")
             return
 
     username = message.from_user.username or message.from_user.first_name
@@ -228,7 +175,11 @@ def get_ticket(message):
     waiting_ticket.discard(message.from_user.id)
     save_data()
 
-    bot.send_message(message.chat.id, "✅ Ты участвуешь!")
+    bot.send_message(
+        message.chat.id,
+        f"✅ Ты участвуешь!\n🎟 {ticket}",
+        reply_markup=main_menu()
+    )
 
 # ================= RUN =================
 print("Bot started 🚀")
