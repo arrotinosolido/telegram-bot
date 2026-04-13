@@ -3,11 +3,9 @@ from telebot import types
 import json
 import os
 import random
-import time
 
 # ================= TOKEN =================
 TOKEN = os.getenv("TOKEN")
-
 bot = telebot.TeleBot(TOKEN)
 
 # ================= CONFIG =================
@@ -24,6 +22,7 @@ if os.path.exists(DATA_FILE):
 else:
     participants = {}
 
+# состояния пользователей
 waiting_ticket = set()
 
 # ================= SAVE =================
@@ -57,42 +56,52 @@ def start(message):
         reply_markup=main_menu()
     )
 
-# ================= ADMIN =================
+# ================= ADMIN PANEL =================
 @bot.message_handler(commands=['admin'])
 def admin(message):
     if message.from_user.id not in ADMIN_IDS:
         bot.send_message(message.chat.id, "❌ Нет доступа")
         return
 
+    markup = types.InlineKeyboardMarkup(row_width=2)
+
+    markup.add(
+        types.InlineKeyboardButton("🏆 Победитель", callback_data="admin_winner"),
+        types.InlineKeyboardButton("👥 Список", callback_data="admin_list"),
+    )
+
+    markup.add(
+        types.InlineKeyboardButton("📦 Экспорт", callback_data="admin_export"),
+        types.InlineKeyboardButton("🗑 Удалить билет", callback_data="admin_delete"),
+    )
+
     bot.send_message(
         message.chat.id,
-        f"👑 Админ панель\n👥 Участников: {len(participants)}"
+        f"👑 Админ панель\n👥 Участников: {len(participants)}",
+        reply_markup=markup
     )
 
 # ================= CALLBACK =================
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     cid = call.message.chat.id
-    uid = call.from_user.id
+    uid = str(call.from_user.id)
 
     # ================= JOIN =================
     if call.data == "join":
 
-        if str(uid) in participants:
+        if uid in participants:
             bot.send_message(cid, "❌ Ты уже участвуешь!")
             return
 
         if not is_subscribed(uid):
-
             markup = types.InlineKeyboardMarkup()
-
             markup.add(
                 types.InlineKeyboardButton(
-                    "📢 Подписаться на канал",
+                    "📢 Подписаться",
                     url="https://t.me/plannnnb"
                 )
             )
-
             markup.add(
                 types.InlineKeyboardButton(
                     "✅ Я подписался",
@@ -122,18 +131,18 @@ def callback(call):
     # ================= MY TICKET =================
     elif call.data == "my_ticket":
 
-        if str(uid) in participants:
+        if uid in participants:
             bot.send_message(
                 cid,
-                f"🎫 Твой билет:\n🎟 {participants[str(uid)]['ticket']}"
+                f"🎫 Твой билет:\n🎟 {participants[uid]['ticket']}"
             )
         else:
             bot.send_message(cid, "❌ Ты ещё не участвовал")
 
-    # ================= ADMIN WINNER =================
+    # ================= WINNER =================
     elif call.data == "admin_winner":
 
-        if uid not in ADMIN_IDS:
+        if call.from_user.id not in ADMIN_IDS:
             return
 
         if not participants:
@@ -143,44 +152,103 @@ def callback(call):
         winner_id = random.choice(list(participants.keys()))
         winner = participants[winner_id]
 
-        text = (
+        bot.send_message(
+            cid,
             "🎉 РОЗЫГРЫШ!\n\n"
-            "🏆 Победитель:\n"
+            f"🏆 Победитель:\n"
             f"👤 {winner['username']}\n"
             f"🎟 {winner['ticket']}"
         )
 
+    # ================= LIST =================
+    elif call.data == "admin_list":
+
+        if call.from_user.id not in ADMIN_IDS:
+            return
+
+        if not participants:
+            bot.send_message(cid, "❌ Пусто")
+            return
+
+        text = "👥 Участники:\n\n"
+        for i, (uid_p, data) in enumerate(participants.items(), 1):
+            text += f"{i}. {data['username']} — {data['ticket']}\n"
+
         bot.send_message(cid, text)
 
+    # ================= EXPORT =================
+    elif call.data == "admin_export":
+
+        if call.from_user.id not in ADMIN_IDS:
+            return
+
+        file_path = os.path.join(BASE_DIR, "participants_export.txt")
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            for uid_p, data in participants.items():
+                f.write(f"{data['username']} | {data['ticket']}\n")
+
+        with open(file_path, "rb") as f:
+            bot.send_document(cid, f)
+
+    # ================= DELETE MODE =================
+    elif call.data == "admin_delete":
+
+        if call.from_user.id not in ADMIN_IDS:
+            return
+
+        waiting_ticket.add(f"delete:{uid}")
+        bot.send_message(cid, "✏️ Отправь номер билета для удаления:")
+
 # ================= TICKET INPUT =================
-@bot.message_handler(func=lambda m: m.from_user.id in waiting_ticket)
+@bot.message_handler(func=lambda m: True)
 def ticket_input(message):
 
     uid = str(message.from_user.id)
-    ticket = message.text.strip()
+    text = message.text.strip()
 
-    # duplicate check
-    for u in participants.values():
-        if u["ticket"] == ticket:
-            bot.send_message(message.chat.id, "❌ Такой билет уже есть!")
-            return
+    # ================= DELETE MODE =================
+    if f"delete:{uid}" in waiting_ticket:
 
-    username = message.from_user.username or message.from_user.first_name
+        found = None
+        for user_id, data in list(participants.items()):
+            if data["ticket"] == text:
+                found = user_id
+                break
 
-    participants[uid] = {
-        "username": username,
-        "ticket": ticket
-    }
+        if found:
+            del participants[found]
+            save_data()
+            bot.send_message(message.chat.id, "🗑 Удалено")
+        else:
+            bot.send_message(message.chat.id, "❌ Не найдено")
 
-    waiting_ticket.discard(message.from_user.id)
-    save_data()
+        waiting_ticket.discard(f"delete:{uid}")
+        return
 
-    bot.send_message(
-        message.chat.id,
-        f"✅ Ты участвуешь!\n🎟 {ticket}",
-        reply_markup=main_menu()
-    )
+    # ================= JOIN MODE =================
+    if uid in waiting_ticket:
+
+        for u in participants.values():
+            if u["ticket"] == text:
+                bot.send_message(message.chat.id, "❌ Такой билет уже есть!")
+                return
+
+        username = message.from_user.username or message.from_user.first_name
+
+        participants[uid] = {
+            "username": username,
+            "ticket": text
+        }
+
+        waiting_ticket.discard(uid)
+        save_data()
+
+        bot.send_message(
+            message.chat.id,
+            f"✅ Ты участвуешь!\n🎟 {text}",
+            reply_markup=main_menu()
+        )
 
 # ================= RUN =================
-print("Bot started 🚀")
-bot.infinity_polling(skip_pending=True)
+bot.infinity_polling()
