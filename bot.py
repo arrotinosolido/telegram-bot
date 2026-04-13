@@ -41,12 +41,11 @@ def is_subscribed(user_id):
         m2 = bot.get_chat_member(CHANNEL_2, int(user_id))
         m3 = bot.get_chat_member(CHANNEL_3, int(user_id))
 
-        ok1 = m1.status in ["member", "creator", "administrator"]
-        ok2 = m2.status in ["member", "creator", "administrator"]
-        ok3 = m3.status in ["member", "creator", "administrator"]
-
-        return ok1 and ok2 and ok3
-
+        return all([
+            m1.status in ["member", "creator", "administrator"],
+            m2.status in ["member", "creator", "administrator"],
+            m3.status in ["member", "creator", "administrator"]
+        ])
     except:
         return False
 
@@ -87,7 +86,7 @@ def admin(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
 
     markup.add(
-        types.InlineKeyboardButton("🏆 Победитель", callback_data="admin_winner"),
+        types.InlineKeyboardButton("🏆 Победители", callback_data="admin_winner"),
         types.InlineKeyboardButton("👥 Список", callback_data="admin_list"),
     )
 
@@ -102,16 +101,15 @@ def admin(message):
         reply_markup=markup
     )
 
-# ================= SLOT ANIMATION =================
+# ================= SLOT ANIMATION + 3 WINNERS =================
 def run_slot_animation(bot, cid, participants_copy):
 
-    users = list(participants_copy.values())
-
-    msg = bot.send_message(cid, "🎰 Запуск слотов...")
-
-    if len(users) < 1:
-        bot.edit_message_text("❌ Нет участников", cid, msg.message_id)
+    if len(participants_copy) < 3:
+        bot.send_message(cid, "❌ Нужно минимум 3 участника")
         return
+
+    users = list(participants_copy.values())
+    msg = bot.send_message(cid, "🎰 Запуск розыгрыша...")
 
     speed = 0.1
 
@@ -135,40 +133,22 @@ def run_slot_animation(bot, cid, participants_copy):
         time.sleep(speed)
         speed += 0.02
 
-    almost = random.choice(users)
+    # 🏆 3 победителя
+    winner_ids = random.sample(list(participants_copy.keys()), k=3)
+    winners = [participants_copy[w] for w in winner_ids]
 
-    bot.edit_message_text(
-        f"😱 <b>ПОЧТИ!!!</b>\n\n"
-        f"| {almost['username']} |\n"
-        f"| {almost['username']} |\n"
-        f"| ??? |",
-        cid,
-        msg.message_id
-    )
+    text = "🎉 <b>ПОБЕДИТЕЛИ!</b>\n\n"
 
-    time.sleep(1)
-
-    winner_id = random.choice(list(participants_copy.keys()))
-    winner = participants_copy[winner_id]
-
-    bot.edit_message_text(
-        f"🎉 <b>ДЖЕКПОТ!!!</b>\n\n"
-        f"🏆 Победитель:\n"
-        f"👤 {winner['username']}\n"
-        f"🎟 <code>{winner['ticket']}</code>",
-        cid,
-        msg.message_id
-    )
-
-    try:
-        bot.send_message(
-            CHANNEL,
-            f"🏆 <b>Победитель розыгрыша</b>\n\n"
-            f"👤 {winner['username']}\n"
-            f"🎟 <code>{winner['ticket']}</code>"
+    for i, w in enumerate(winners, 1):
+        text += (
+            f"🏆 {i} место\n"
+            f"👤 {w['username']}\n"
+            f"🎟 {w['ticket']}\n\n"
         )
-    except:
-        pass
+
+    bot.edit_message_text(text, cid, msg.message_id)
+
+    bot.send_message(CHANNEL, text)
 
 # ================= CALLBACK =================
 @bot.callback_query_handler(func=lambda call: True)
@@ -192,11 +172,7 @@ def callback(call):
 
             markup.add(types.InlineKeyboardButton("✅ Я подписался", callback_data="check_sub"))
 
-            bot.send_message(
-                cid,
-                "❌ Подпишись на все 3 канала:",
-                reply_markup=markup
-            )
+            bot.send_message(cid, "❌ Подпишись на все 3 канала:", reply_markup=markup)
             return
 
         waiting_ticket.add(uid)
@@ -213,20 +189,13 @@ def callback(call):
     elif call.data == "my_ticket":
 
         if uid in participants:
-            bot.send_message(
-                cid,
-                f"🎫 Твой билет:\n🎟 <code>{participants[uid]['ticket']}</code>"
-            )
+            bot.send_message(cid, f"🎫 Твой билет:\n🎟 <code>{participants[uid]['ticket']}</code>")
         else:
             bot.send_message(cid, "❌ Нет билета")
 
     elif call.data == "admin_winner":
 
         if call.from_user.id not in ADMIN_IDS:
-            return
-
-        if not participants:
-            bot.send_message(cid, "❌ Нет участников")
             return
 
         threading.Thread(
