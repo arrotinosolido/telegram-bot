@@ -15,6 +15,7 @@ ADMIN_IDS = [6048916888, 401484954]
 
 CHANNEL = "@plannnnb"
 CHANNEL_2 = "@ReVape_bgd"
+CHANNEL_3 = "@marselbelgorod"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "participants.json")
@@ -38,11 +39,13 @@ def is_subscribed(user_id):
     try:
         m1 = bot.get_chat_member(CHANNEL, int(user_id))
         m2 = bot.get_chat_member(CHANNEL_2, int(user_id))
+        m3 = bot.get_chat_member(CHANNEL_3, int(user_id))
 
         ok1 = m1.status in ["member", "creator", "administrator"]
         ok2 = m2.status in ["member", "creator", "administrator"]
+        ok3 = m3.status in ["member", "creator", "administrator"]
 
-        return ok1 and ok2
+        return ok1 and ok2 and ok3
 
     except:
         return False
@@ -183,19 +186,15 @@ def callback(call):
         if not is_subscribed(uid):
             markup = types.InlineKeyboardMarkup()
 
-            markup.add(
-                types.InlineKeyboardButton("📢 Канал 1", url="https://t.me/plannnnb")
-            )
-            markup.add(
-                types.InlineKeyboardButton("📢 Канал 2", url="https://t.me/ReVape_bgd")
-            )
-            markup.add(
-                types.InlineKeyboardButton("✅ Я подписался", callback_data="check_sub")
-            )
+            markup.add(types.InlineKeyboardButton("📢 Канал 1", url="https://t.me/plannnnb"))
+            markup.add(types.InlineKeyboardButton("📢 Канал 2", url="https://t.me/ReVape_bgd"))
+            markup.add(types.InlineKeyboardButton("📢 Канал 3", url="https://t.me/marselbelgorod"))
+
+            markup.add(types.InlineKeyboardButton("✅ Я подписался", callback_data="check_sub"))
 
             bot.send_message(
                 cid,
-                "❌ Подпишись на оба канала:",
+                "❌ Подпишись на все 3 канала:",
                 reply_markup=markup
             )
             return
@@ -323,7 +322,6 @@ def ticket_input(message):
             reply_markup=main_menu()
         )
 
-        # уведомление админу
         bot.send_message(
             ADMIN_IDS[0],
             f"🎟 Новый участник\n\n"
